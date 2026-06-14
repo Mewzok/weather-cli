@@ -1,6 +1,54 @@
+import re
 import requests
 import urllib.parse
+import sys
 from datetime import datetime
+
+RESET = "\033[0m"
+BOLD = "\033[1m"
+DIM = "\033[2m"
+CYAN = "\033[96m"
+GOLD = "\033[93m"
+GREEN = "\033[92m"
+BLUE = "\033[94m"
+
+# styling helper functions ----------------------------
+
+def visible_len(text):
+    return len(re.sub(r"\x1b\[[0-9;]*m", "", text))
+
+
+def colorize(text, *codes):
+    if not sys.stdout.isatty():
+        return text
+    return "".join(codes) + text + RESET
+
+
+def print_banner(title, subtitle):
+    width = max(visible_len(title) + 2, visible_len(subtitle)) + 4
+    border = "═" * width
+
+    print(colorize("╔" + border + "╗", CYAN))
+    print(colorize("║" + title.center(width) + "║", CYAN))
+    if subtitle:
+        print(colorize("║" + subtitle.center(width) + "║", DIM))
+    print(colorize("╚" + border + "╝", CYAN))
+
+
+def print_panel(title, lines, accent=CYAN):
+    width = max(visible_len(title), max((visible_len(line) for line in lines), default=0)) + 4
+
+    print(f"{accent}┌{'─' * width}┐{RESET}")
+    print(f"{accent}│ {BOLD}{title}{RESET}{accent}{' ' * (width - visible_len(title) - 1)}│{RESET}")
+    print(f"{accent}├{'─' * width}┤{RESET}")
+
+    for line in lines:
+        pad = width - visible_len(line) - 1
+        print(f"{accent}│ {RESET}{line}{' ' * pad}{accent}│{RESET}")
+
+    print(f"{accent}└{'─' * width}┘{RESET}")
+
+# end of styling helper functions -------------------------
 
 def get_location_data(location_query):
     # convert string with spaces into valid URL format
@@ -138,20 +186,37 @@ def format_forecast_days(date_strings):
     return labels
 
 def display_weather_data(location_data, report_data):
-    # today's weather report
     current_weather = report_data['current']
-    print(f"Current Weather Report in {location_data['name']}, {location_data['admin']}, {location_data['country']}:")
-    print(f"Temperature: {current_weather['temperature_2m']}°F")
-    print(f"Humidity: {current_weather['relative_humidity_2m']}")
-    print(f"Wind Speed: {current_weather['wind_speed_10m']} mph")
-    print(f"Weather Condition: {convert_weather_code(current_weather['weather_code'])}")
-
-    # 3-day forecast
     forecast = report_data['daily']
     day_labels = format_forecast_days(forecast['time'])
 
+    location_name = location_data.get('name', 'Your area')
+    region = ", ".join(part for part in [location_data.get('admin'), location_data.get('country')] if part)
+    heading = f"Weather Outlook for {location_name}"
+    subtitle = region if region else "3-day forecast"
+
+    print()
+    print_banner(heading, subtitle)
+    print()
+
+    current_lines = [
+        f"{colorize('Temperature', BOLD)}: {colorize(str(current_weather['temperature_2m']) + '°F', GOLD)}",
+        f"{colorize('Humidity', BOLD)}: {current_weather['relative_humidity_2m']}%",
+        f"{colorize('Wind Speed', BOLD)}: {current_weather['wind_speed_10m']} mph",
+        f"{colorize('Condition', BOLD)}: {colorize(convert_weather_code(current_weather['weather_code']), GREEN)}",
+    ]
+    print_panel("Current Conditions", current_lines, accent=CYAN)
+    print()
+
     for i in range(3):
-        print(f"{day_labels[i]}'s Forecast:\nHigh: {forecast['temperature_2m_max'][i]}\nLow: {forecast['temperature_2m_min'][i]}\nCondition: {convert_weather_code(forecast['weather_code'][i])}")
+        forecast_lines = [
+            f"{colorize('High', BOLD)}: {forecast['temperature_2m_max'][i]}°F",
+            f"{colorize('Low', BOLD)}: {forecast['temperature_2m_min'][i]}°F",
+            f"{colorize('Weather', BOLD)}: {colorize(convert_weather_code(forecast['weather_code'][i]), BLUE)}",
+        ]
+        title = f"{day_labels[i]}'s Forecast"
+        print_panel(title, forecast_lines, accent=GREEN)
+        print()
 
     return None
 
