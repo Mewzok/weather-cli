@@ -11,6 +11,7 @@ CYAN = "\033[96m"
 GOLD = "\033[93m"
 GREEN = "\033[92m"
 BLUE = "\033[94m"
+RED = "\033[91m"
 
 # styling helper functions ----------------------------
 
@@ -51,32 +52,53 @@ def print_panel(title, lines, accent=CYAN):
 # end of styling helper functions -------------------------
 
 def get_location_data(location_query):
-    # convert string with spaces into valid URL format
-    encoded_query = urllib.parse.quote(location_query.strip())
+    if not isinstance(location_query, str) or not location_query.strip():
+        raise ValueError("Please enter a location or ZIP code before continuing.")
 
+    encoded_query = urllib.parse.quote(location_query.strip())
     url = f"https://geocoding-api.open-meteo.com/v1/search?name={encoded_query}&count=1&language=en&format=json"
 
     try:
-        response = requests.get(url)
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+    except requests.exceptions.Timeout:
+        raise RuntimeError("The location lookup timed out. Please try again in a moment.")
+    except requests.exceptions.HTTPError as exc:
+        raise RuntimeError(f"The location service returned an error: {exc}")
+    except requests.exceptions.RequestException as exc:
+        raise RuntimeError(f"Unable to reach the location service: {exc}")
+    except ValueError as exc:
+        raise RuntimeError("The location service returned invalid data.") from exc
 
-        if response.status_code == 200:
-            data = response.json()
-            if "results" in data and len(data["results"]) > 0:
-                best_match = data["results"][0]
-                return {
-                    "name": best_match.get("name"),
-                    "admin": best_match.get("admin1"), # state or region
-                    "country": best_match.get("country"),
-                    "latitude": best_match.get("latitude"),
-                    "longitude": best_match.get("longitude")
-                }
-            return None
-        
-    except Exception as e:
-        print(f"Geocoding error occured: {e}")
-        return None
+    if not isinstance(data, dict) or not isinstance(data.get("results"), list) or not data["results"]:
+        raise ValueError("No matching location was found. Please try another city, region, or ZIP code.")
+
+    best_match = data["results"][0]
+
+    if not isinstance(best_match, dict):
+        raise RuntimeError("The location service returned an unexpected response format.")
+
+    latitude = best_match.get("latitude")
+    longitude = best_match.get("longitude")
+
+    if latitude is None or longitude is None:
+        raise RuntimeError("The location service returned incomplete coordinates.")
+
+    return {
+        "name": best_match.get("name") or "Unknown location",
+        "admin": best_match.get("admin1"),
+        "country": best_match.get("country"),
+        "latitude": latitude,
+        "longitude": longitude,
+    }
 
 def get_weather_data(latitude, longitude):
+    if latitude is None or longitude is None:
+        raise ValueError("Location coordinates are missing, so weather data cannot be loaded.")
+    if not isinstance(latitude, (int, float)) or not isinstance(longitude, (int, float)):
+        raise ValueError("Location coordinates are invalid.")
+
     # parameters for today's weather report
     today_params = [
         "temperature_2m", # temperature
@@ -104,17 +126,66 @@ def get_weather_data(latitude, longitude):
         f"&timezone=auto"
     )
 
-    response = requests.get(url)
-
-    if response.status_code == 200:
+    try:
+        response = requests.get(url, timeout=15)
+        response.raise_for_status()
         data = response.json()
-    else:
-        # later -  handle reponse error
-        print("Failed to retrieve data")
+    except requests.exceptions.Timeout:
+        raise RuntimeError("The weather service timed out. Please try again in a moment.")
+    except requests.exceptions.HTTPError as exc:
+        if exc.response is not None and exc.response.status_code == 429:
+            raise RuntimeError("The weather service is rate-limiting requests. Please wait a moment and try again.") from exc
+        raise RuntimeError(f"The weather service returned an error: {exc}") from exc
+    except requests.exceptions.ConnectionError as exc:
+        raise RuntimeError("Network connection failed while reaching the weather service. Please check your internet connection.") from exc
+    except requests.exceptions.RequestException as exc:
+        raise RuntimeError(f"Unable to reach the weather service: {exc}") from exc
+    except ValueError as exc:
+        raise RuntimeError("The weather service returned invalid JSON.") from exc
+
+    if not isinstance(data, dict) or "current" not in data or "daily" not in data:
+        raise RuntimeError("The weather service returned incomplete data.")
+
+    if not isinstance(data.get("daily"), dict) or not isinstance(data["daily"].get("time"), list):
+        raise RuntimeError("The weather forecast data is missing its daily timeline.")
 
     return data
 
 def convert_weather_code(weather_code):
+    status_map = {
+        0: "Clear Sky",
+        1: "Mostly Clear Sky",
+        2: "Partly Cloudy",
+        3: "Overcast",
+        45: "Foggy",
+        48: "Foggy with Deposits",
+        51: "Light Drizzle",
+        53: "Moderate Drizzle",
+        55: "Dense Drizzle",
+        56: "Freezing Drizzle",
+        57: "Dense Freezing Drizzle",
+        61: "Light Rain",
+        63: "Moderate Rain",
+        65: "Heavy Rain",
+        66: "Freezing Rain",
+        67: "Heavy Freezing Rain",
+        71: "Light Snowfall",
+        73: "Moderate Snowfall",
+        75: "Heavy Snowfall",
+        77: "Snow Grains",
+        80: "Light Rain Showers",
+        81: "Moderate Rain Showers",
+        82: "Heavy Rain Showers",
+        85: "Light Snow Showers",
+        86: "Heavy Snow Showers",
+        95: "Thunderstorm",
+        96: "Thunderstorm with Light Hail",
+        99: "Thunderstorm with Heavy Hail",
+    }
+
+    return status_map.get(weather_code, "Unknown Weather Condition")
+
+def convert_weather_code_legacy(weather_code):
     status = ""
 
     match weather_code:
@@ -186,9 +257,30 @@ def format_forecast_days(date_strings):
     return labels
 
 def display_weather_data(location_data, report_data):
-    current_weather = report_data['current']
-    forecast = report_data['daily']
-    day_labels = format_forecast_days(forecast['time'])
+    try:
+        current_weather = report_data['current']
+        forecast = report_data['daily']
+        day_labels = format_forecast_days(forecast['time'])
+    except (TypeError, KeyError, ValueError) as exc:
+        raise RuntimeError("The weather response is incomplete and cannot be displayed.") from exc
+
+    if not isinstance(current_weather, dict):
+        raise RuntimeError("Current weather data is missing or invalid.")
+
+    if not isinstance(forecast, dict):
+        raise RuntimeError("Forecast data is missing or invalid.")
+
+    required_daily_fields = ("temperature_2m_max", "temperature_2m_min", "weather_code", "time")
+    missing_daily_fields = [field for field in required_daily_fields if field not in forecast or forecast[field] is None]
+    if missing_daily_fields:
+        raise RuntimeError("The forecast is missing one or more required values.")
+
+    if not isinstance(forecast['time'], list) or len(forecast['time']) < 3:
+        raise RuntimeError("The forecast timeline is incomplete.")
+
+    for key in ("temperature_2m_max", "temperature_2m_min", "weather_code"):
+        if not isinstance(forecast[key], list) or len(forecast[key]) < 3:
+            raise RuntimeError("The daily forecast values are incomplete.")
 
     location_name = location_data.get('name', 'Your area')
     region = ", ".join(part for part in [location_data.get('admin'), location_data.get('country')] if part)
@@ -221,20 +313,37 @@ def display_weather_data(location_data, report_data):
     return None
 
 def main():
-    # retrieve desired location
-    location_query = input("Enter location or zip code: ")
+    while True:
+        try:
+            location_query = input("Enter location or ZIP code (or type 'quit' to exit): ").strip()
 
-    # store name, state/region, country, latitude and longitude of user's selected location in a dictionary
-    location_data = get_location_data(location_query)
-    
-    # retrieve today's weather report as json response data
-    report_data = get_weather_data(location_data['latitude'], location_data['longitude'])
+            if not location_query:
+                print("Please enter a location or ZIP code before continuing.")
+                continue
 
-    # display today's weather report
-    if(report_data is not None):
-        display_weather_data(location_data, report_data)
-    else:
-        print("Something went wrong when retrieving location data. Please try again.")
+            if location_query.lower() in {"q", "quit", "exit"}:
+                print("\nGoodbye.")
+                return
+
+            location_data = get_location_data(location_query)
+            report_data = get_weather_data(location_data['latitude'], location_data['longitude'])
+            display_weather_data(location_data, report_data)
+            return
+
+        except ValueError as exc:
+            print(str(exc))
+        except RuntimeError as exc:
+            print(str(exc))
+        except KeyboardInterrupt:
+            print("Weather lookup interrupted. Exiting gracefully.")
+            return
+        except EOFError:
+            print("Input stream ended unexpectedly. Please run the command again.")
+            return
+        except requests.exceptions.RequestException as exc:
+            print("A network problem occurred while contacting the weather service.", str(exc))
+        except Exception as exc:
+            print("An unexpected error occurred.", str(exc))
 
     
 if __name__ == "__main__":
