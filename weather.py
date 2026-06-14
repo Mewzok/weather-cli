@@ -7,8 +7,6 @@ def get_location_data(location_query):
 
     url = f"https://geocoding-api.open-meteo.com/v1/search?name={encoded_query}&count=1&language=en&format=json"
 
-    print(url)
-
     try:
         response = requests.get(url)
 
@@ -30,18 +28,31 @@ def get_location_data(location_query):
         return None
 
 def get_todays_data(latitude, longitude):
-    # desired parameters
-    params = [
+    # parameters for today's weather report
+    today_params = [
         "temperature_2m", # temperature
         "relative_humidity_2m", # humidity
         "wind_speed_10m", # wind speed
-        "weather_code"  # weather summary, returned as code, see convert_weather_code function for detailed code numbers
-        ]
-    
-    param_string = ",".join(params)
+        "weather_code",  # weather summary, returned as code, see convert_weather_code function for detailed code numbers
+    ]
+
+    # parameters for 3 day forecast report
+    daily_params = [
+        "temperature_2m_max", # temp high
+        "temperature_2m_min", # temp low
+        "weather_code" # weather code
+    ]
 
     # build API URL with latitude and longitude, including desired parameters under "current"
-    url = f"https://api.open-meteo.com/v1/forecast?latitude={latitude}&longitude={longitude}&current={param_string}&temperature_unit=fahrenheit&wind_speed_unit=mph"
+    url = (
+        f"https://api.open-meteo.com/v1/forecast?"
+        f"latitude={latitude}&longitude={longitude}"
+        f"&current={','.join(today_params)}"
+        f"&daily={','.join(daily_params)}"
+        f"&temperature_unit=fahrenheit"
+        f"&wind_speed_unit=mph"
+        f"&timezone=auto"
+    )
 
     response = requests.get(url)
 
@@ -120,8 +131,8 @@ def main():
     # retrieve today's weather report as json response data
     report_data = get_todays_data(location_data['latitude'], location_data['longitude'])
 
+    # display today's weather report
     if(report_data is not None):
-        # display today's weather report
         current_weather = report_data['current']
         print(f"Current Weather Report in {location_data['name']}, {location_data['admin']}, {location_data['country']}:")
         print(f"Temperature: {current_weather['temperature_2m']}°F")
@@ -130,6 +141,8 @@ def main():
         print(f"Weather Status: {convert_weather_code(current_weather['weather_code'])}")
     else:
         print("Something went wrong when retrieving location data. Please try again.")
+
+    
         
 
 if __name__ == "__main__":
