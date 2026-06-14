@@ -1,5 +1,6 @@
 import requests
 import urllib.parse
+from datetime import datetime
 
 def get_location_data(location_query):
     # convert string with spaces into valid URL format
@@ -27,7 +28,7 @@ def get_location_data(location_query):
         print(f"Geocoding error occured: {e}")
         return None
 
-def get_todays_data(latitude, longitude):
+def get_weather_data(latitude, longitude):
     # parameters for today's weather report
     today_params = [
         "temperature_2m", # temperature
@@ -40,7 +41,7 @@ def get_todays_data(latitude, longitude):
     daily_params = [
         "temperature_2m_max", # temp high
         "temperature_2m_min", # temp low
-        "weather_code" # weather code
+        "weather_code", # weather code
     ]
 
     # build API URL with latitude and longitude, including desired parameters under "current"
@@ -49,6 +50,7 @@ def get_todays_data(latitude, longitude):
         f"latitude={latitude}&longitude={longitude}"
         f"&current={','.join(today_params)}"
         f"&daily={','.join(daily_params)}"
+        f"&forecast_days=3"
         f"&temperature_unit=fahrenheit"
         f"&wind_speed_unit=mph"
         f"&timezone=auto"
@@ -121,6 +123,38 @@ def convert_weather_code(weather_code):
 
     return status
 
+def format_forecast_days(date_strings):
+    labels = []
+
+    for i, date_str in enumerate(date_strings):
+        if i == 0:
+            labels.append("Today")
+        elif i == 1:
+            labels.append("Tomorrow")
+        else:
+            date_obj = datetime.strptime(date_str, "%Y-%m-%d")
+            labels.append(date_obj.strftime("%A"))
+
+    return labels
+
+def display_weather_data(location_data, report_data):
+    # today's weather report
+    current_weather = report_data['current']
+    print(f"Current Weather Report in {location_data['name']}, {location_data['admin']}, {location_data['country']}:")
+    print(f"Temperature: {current_weather['temperature_2m']}°F")
+    print(f"Humidity: {current_weather['relative_humidity_2m']}")
+    print(f"Wind Speed: {current_weather['wind_speed_10m']} mph")
+    print(f"Weather Condition: {convert_weather_code(current_weather['weather_code'])}")
+
+    # 3-day forecast
+    forecast = report_data['daily']
+    day_labels = format_forecast_days(forecast['time'])
+
+    for i in range(3):
+        print(f"{day_labels[i]}'s Forecast:\nHigh: {forecast['temperature_2m_max'][i]}\nLow: {forecast['temperature_2m_min'][i]}\nCondition: {convert_weather_code(forecast['weather_code'][i])}")
+
+    return None
+
 def main():
     # retrieve desired location
     location_query = input("Enter location or zip code: ")
@@ -129,21 +163,14 @@ def main():
     location_data = get_location_data(location_query)
     
     # retrieve today's weather report as json response data
-    report_data = get_todays_data(location_data['latitude'], location_data['longitude'])
+    report_data = get_weather_data(location_data['latitude'], location_data['longitude'])
 
     # display today's weather report
     if(report_data is not None):
-        current_weather = report_data['current']
-        print(f"Current Weather Report in {location_data['name']}, {location_data['admin']}, {location_data['country']}:")
-        print(f"Temperature: {current_weather['temperature_2m']}°F")
-        print(f"Humidity: {current_weather['relative_humidity_2m']}")
-        print(f"Wind Speed: {current_weather['wind_speed_10m']} mph")
-        print(f"Weather Status: {convert_weather_code(current_weather['weather_code'])}")
+        display_weather_data(location_data, report_data)
     else:
         print("Something went wrong when retrieving location data. Please try again.")
 
     
-        
-
 if __name__ == "__main__":
     main()
