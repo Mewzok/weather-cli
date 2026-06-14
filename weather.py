@@ -185,63 +185,6 @@ def convert_weather_code(weather_code):
 
     return status_map.get(weather_code, "Unknown Weather Condition")
 
-def convert_weather_code_legacy(weather_code):
-    status = ""
-
-    match weather_code:
-        case 0:
-            status = "Clear Sky"
-        case 1:
-            status = "Mostly Clear Sky"
-        case 2:
-            status = "Partly Cloudy"
-        case 3:
-            status = "Overcast"
-        case 45 | 48:
-            status = "Foggy"
-        case 51:
-            status = "Light Drizzle"
-        case 53:
-            status = "Moderate Drizzle"
-        case 55:
-            status = "Dense Drizzle"
-        case 56 | 57:
-            status = "Freezing Drizzle"
-        case 61:
-            status = "Light Rain"
-        case 63:
-            status = "Moderate Rain"
-        case 65:
-            status = "Heavy Rain"
-        case 66 | 67:
-            status = "Freezing Rain"
-        case 71:
-            status = "Light Snowfall"
-        case 73:
-            status = "Moderate Snowfall"
-        case 75:
-            status = "Heavy Snowfall"
-        case 77:
-            status = "Snow Grains"
-        case 80:
-            status = "Light Rain Showers"
-        case 81:
-            status = "Moderate Rain Showers"
-        case 82:
-            status = "Heavy Rain Showers"
-        case 85:
-            status = "Light Snow Showers"
-        case 86:
-            status = "Heavy Snow Showers"
-        case 95:
-            status = "Thunderstorm"
-        case 96:
-            status = "Thunderstorm with Light Hail"
-        case 99:
-            status = "Thunderstorm with Heavy Hail"
-
-    return status
-
 def format_forecast_days(date_strings):
     labels = []
 
