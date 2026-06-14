@@ -253,8 +253,6 @@ def display_weather_data(location_data, report_data):
         print_panel(title, forecast_lines, accent=GREEN)
         print()
 
-    return None
-
 def main():
     while True:
         try:
